@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SocialNetworkAuth Frontend</title>
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.5.2/dist/web3.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .section { margin-bottom: 30px; border: 1px solid #ddd; padding: 15px; border-radius: 5px; }
+        button { background-color: #4CAF50; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #45a049; }
+        input, textarea { width: 100%; padding: 8px; margin: 5px 0 15px; display: inline-block; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+    <h1>Social Network Auth</h1>
+    
+    <div class="section">
+        <h2>Connect Wallet</h2>
+        <button id="connectWallet">Connect MetaMask</button>
+        <p id="walletAddress">Not connected</p>
+    </div>
+    
+    <div class="section" id="registrationSection" style="display:none;">
+        <h2>User Registration</h2>
+        <label for="username">Username:</label>
+        <input type="text" id="username" placeholder="Enter username">
+        
+        <label for="email">Encrypted Email:</label>
+        <input type="text" id="email" placeholder="Enter encrypted email">
+        
+        <label for="profileHash">Profile IPFS Hash:</label>
+        <input type="text" id="profileHash" placeholder="Enter IPFS hash">
+        
+        <button id="registerUser">Register</button>
+    </div>
+    
+    <div class="section" id="profileSection" style="display:none;">
+        <h2>User Profile</h2>
+        <div id="userProfile"></div>
+        
+        <h3>Update Profile</h3>
+        <label for="newProfileHash">New IPFS Hash:</label>
+        <input type="text" id="newProfileHash" placeholder="Enter new IPFS hash">
+        <button id="updateProfile">Update Profile</button>
+        
+        <h3>Account Status</h3>
+        <button id="deactivateAccount">Deactivate Account</button>
+        <button id="reactivateAccount">Reactivate Account</button>
+    </div>
+    
+    <div class="section">
+        <h2>Lookup User</h2>
+        <label for="lookupAddress">Ethereum Address:</label>
+        <input type="text" id="lookupAddress" placeholder="Enter 0x address">
+        <button id="getUser">Get User Info</button>
+        <div id="userInfo"></div>
+    </div>
+
+    <script>
+        let contract;
+        let accounts = [];
+        
+        // Initialize Web3
+        async function initWeb3() {
+            if (window.ethereum) {
+                try {
+                    await window.ethereum.request({ method: 'eth_requestAccounts' });
+                    window.web3 = new Web3(window.ethereum);
+
+					// Проверяем, что выбрана правильная сеть (Ganache: Chain ID = 1337)
+					const chainId = await web3.eth.getChainId();
+					if (chainId !== 1337) {
+						alert("Пожалуйста, переключитесь на сеть Ganache (Chain ID: 1337)");
+						return;
+					}
+
+					 // Принудительно переключаемся на первый аккаунт Ganache (если нужно)
+					const ganacheAccount = "0x4474F5Ed9777B4C5fD8C0cb58028324AD14dE40E"; // Замените на адрес из Ganache
+					//accounts = [ganacheAccount]; 
+                    
+                    // Replace with your contract ABI and address
+                    const contractAddress = "0x12b46011dc0c4160fe2c084a6e7f0d8c68221ca8"; // Replace after deploy
+                    const contractABI = [
+	
+	{
+		"inputs": [],
+		"stateMutability": "nonpayable",
+		"type": "constructor"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "userAddress",
+				"type": "address"
+			}
+		],
+		"name": "AccountDeactivated",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "userAddress",
+				"type": "address"
+			}
+		],
+		"name": "AccountReactivated",
+		"type": "event"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "_userAddress",
+				"type": "address"
+			}
+		],
+		"name": "adminDeactivate",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "deactivateAccount",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "userAddress",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "string",
+				"name": "newProfileHash",
+				"type": "string"
+			}
+		],
+		"name": "ProfileUpdated",
+		"type": "event"
+	},
+	{
+		"inputs": [],
+		"name": "reactivateAccount",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "_username",
+				"type": "string"
+			},
+			{
+				"internalType": "string",
+				"name": "_encryptedEmail",
+				"type": "string"
+			},
+			{
+				"internalType": "string",
+				"name": "_profileHash",
+				"type": "string"
+			}
+		],
+		"name": "registerUser",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "_newProfileHash",
+				"type": "string"
+			}
+		],
+		"name": "updateProfile",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "userAddress",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "string",
+				"name": "username",
+				"type": "string"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "timestamp",
+				"type": "uint256"
+			}
+		],
+		"name": "UserRegistered",
+		"type": "event"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "_username",
+				"type": "string"
+			}
+		],
+		"name": "getAddressByUsername",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "_userAddress",
+				"type": "address"
+			}
+		],
+		"name": "getUser",
+		"outputs": [
+			{
+				"internalType": "string",
+				"name": "username",
+				"type": "string"
+			},
+			{
+				"internalType": "string",
+				"name": "encryptedEmail",
+				"type": "string"
+			},
+			{
+				"internalType": "string",
+				"name": "profileHash",
+				"type": "string"
+			},
+			{
+				"internalType": "uint256",
+				"name": "registrationDate",
+				"type": "uint256"
+			},
+			{
+				"internalType": "bool",
+				"name": "isActive",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "_userAddress",
+				"type": "address"
+			}
+		],
+		"name": "isUserRegistered",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "owner",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	}
+
+];
+                    
+                    contract = new web3.eth.Contract(contractABI, contractAddress);
+                    accounts = await web3.eth.getAccounts();
+                    
+                    document.getElementById('walletAddress').textContent = accounts[0];
+                    document.getElementById('registrationSection').style.display = 'block';
+                    
+                    // Check if user is already registered
+                    const isRegistered = await contract.methods.isUserRegistered(accounts[0]).call();
+                    if (isRegistered) {
+                        document.getElementById('registrationSection').style.display = 'none';
+                        document.getElementById('profileSection').style.display = 'block';
+                        loadUserProfile(accounts[0]);
+                    }
+                    
+                } catch (error) {
+                    console.error("User denied account access");
+                }
+            } else {
+                alert("Please install MetaMask!");
+            }
+        }
+
+		function hexToString(hex) {
+			// Удаляем префикс "0x" (если есть)
+			if (hex.startsWith('0x')) {
+				hex = hex.substring(2);
+			}
+			try {
+				return decodeURIComponent(hex.replace(/\s+/g, '').replace(/[0-9a-f]{2}/g, '%$&'));
+			} catch {
+				// Если строка не в UTF-8, возвращаем как есть
+				return hex;
+			}
+		}
+        
+        async function registerUser() {
+    if (!contract || !accounts[0]) {
+        alert("Контракт не загружен или аккаунт не подключен!");
+        return;
+    }
+
+    const username = document.getElementById('username').value.trim();
+	const email = document.getElementById('email').value.trim();
+	const profileHash = document.getElementById('profileHash').value.trim();
+
+    if (!username || !email || !profileHash) {
+        alert("Заполните все поля!");
+        return;
+    }
+
+    try {
+        console.log("Отправка транзакции...");
+        const tx = await contract.methods.registerUser(username, email, profileHash)
+            .send({ from: accounts[0], gas: 50000 });
+        
+        console.log("Транзакция успешна:", tx.transactionHash);
+        alert("Регистрация прошла успешно!");
+        
+        // Обновляем интерфейс
+        document.getElementById('registrationSection').style.display = 'none';
+        document.getElementById('profileSection').style.display = 'block';
+        loadUserProfile(accounts[0]);
+    } catch (error) {
+        console.error("Ошибка регистрации:", error);
+        alert("Ошибка: " + error.message);
+    }
+}
+        
+        // Update profile
+        async function updateProfile() {
+            const newHash = document.getElementById('newProfileHash').value;
+            
+            try {
+                await contract.methods.updateProfile(newHash)
+                    .send({ from: accounts[0] });
+                
+                alert("Profile updated successfully!");
+                loadUserProfile(accounts[0]);
+            } catch (error) {
+                console.error("Update failed:", error);
+                alert("Update failed: " + error.message);
+            }
+        }
+        
+        // Lookup user
+        async function lookupUser() {
+			if (!contract) {
+				alert("Contract not loaded. Connect MetaMask first!");
+				return;
+			}
+            const address = document.getElementById('lookupAddress').value;
+            
+            try {
+                const isRegistered = await contract.methods.isUserRegistered(address).call();
+                if (!isRegistered) {
+                    document.getElementById('userInfo').innerHTML = "<p>User not found</p>";
+                    return;
+                }
+                
+                const user = await contract.methods.getUser(address).call();
+                
+                const userHTML = `
+                    <p><strong>Username:</strong> ${user.username}</p>
+                    <p><strong>Profile Hash:</strong> ${user.profileHash}</p>
+                    <p><strong>Registered:</strong> ${new Date(user.registrationDate * 1000).toLocaleString()}</p>
+                    <p><strong>Status:</strong> ${user.isActive ? 'Active' : 'Inactive'}</p>
+                `;
+                
+                document.getElementById('userInfo').innerHTML = userHTML;
+            } catch (error) {
+                console.error("Lookup failed:", error);
+                document.getElementById('userInfo').innerHTML = "<p>Error fetching user data</p>";
+            }
+        }
+        
+        // Event listeners
+        document.getElementById('connectWallet').addEventListener('click', initWeb3);
+        document.getElementById('registerUser').addEventListener('click', registerUser);
+        document.getElementById('updateProfile').addEventListener('click', updateProfile);
+        document.getElementById('getUser').addEventListener('click', lookupUser);
+        document.getElementById('deactivateAccount').addEventListener('click', async () => {
+            try {
+                await contract.methods.deactivateAccount().send({ from: accounts[0] });
+                alert("Account deactivated");
+                loadUserProfile(accounts[0]);
+            } catch (error) {
+                console.error("Deactivation failed:", error);
+                alert("Deactivation failed: " + error.message);
+            }
+        });
+        document.getElementById('reactivateAccount').addEventListener('click', async () => {
+            try {
+                await contract.methods.reactivateAccount().send({ from: accounts[0] });
+                alert("Account reactivated");
+                loadUserProfile(accounts[0]);
+            } catch (error) {
+                console.error("Reactivation failed:", error);
+                alert("Reactivation failed: " + error.message);
+            }
+        });
+    </script>
+</body>
+</html>
