@@ -2,7 +2,7 @@
 <html>
 <head>
     <title>SocialNetworkAuth Frontend</title>
-    <script src="https://cdn.jsdelivr.net/npm/web3@1.5.2/dist/web3.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.8.0/dist/web3.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
         .section { margin-bottom: 30px; border: 1px solid #ddd; padding: 15px; border-radius: 5px; }
@@ -67,21 +67,22 @@
                     await window.ethereum.request({ method: 'eth_requestAccounts' });
                     window.web3 = new Web3(window.ethereum);
 
-					// Проверяем, что выбрана правильная сеть (Ganache: Chain ID = 1337)
-					const chainId = await web3.eth.getChainId();
-					if (chainId !== 1337) {
-						alert("Пожалуйста, переключитесь на сеть Ganache (Chain ID: 1337)");
-						return;
-					}
+					// Проверка сети
+						const chainId = await web3.eth.getChainId();
+						if (chainId !== 1337) { // Для Ganache
+							await window.ethereum.request({
+								method: 'wallet_switchEthereumChain',
+								params: [{ chainId: '0x539' }] // 1337 в hex
+							});
+						}
 
 					 // Принудительно переключаемся на первый аккаунт Ganache (если нужно)
-					const ganacheAccount = "0x4474F5Ed9777B4C5fD8C0cb58028324AD14dE40E"; // Замените на адрес из Ganache
+					const ganacheAccount = "0x3BbC31AA09EbFbc806AA5341EE88FC1862D507Ca"; // Замените на адрес из Ganache
 					//accounts = [ganacheAccount]; 
-                    
+                    document.getElementById('lookupAddress').placeholder = accounts[0] || "Enter 0x address";
                     // Replace with your contract ABI and address
-                    const contractAddress = "0x12b46011dc0c4160fe2c084a6e7f0d8c68221ca8"; // Replace after deploy
+                    const contractAddress = "0xa533078cb28a77be102d48502f08a5b9cd3d195b"; // Replace after deploy
                     const contractABI = [
-	
 	{
 		"inputs": [],
 		"stateMutability": "nonpayable",
@@ -310,7 +311,6 @@
 		"stateMutability": "view",
 		"type": "function"
 	}
-
 ];
                     
                     contract = new web3.eth.Contract(contractABI, contractAddress);
@@ -347,6 +347,25 @@
 				return hex;
 			}
 		}
+
+		async function loadUserProfile(address) {
+        try {
+            const user = await contract.methods.getUser(address).call();
+            
+            const profileHTML = `
+                <p><strong>Username:</strong> ${user.username}</p>
+                <p><strong>Email:</strong> [encrypted]</p>
+                <p><strong>Profile Hash:</strong> ${user.profileHash}</p>
+                <p><strong>Registered:</strong> ${new Date(user.registrationDate * 1000).toLocaleString()}</p>
+                <p><strong>Status:</strong> ${user.isActive ? 'Active' : 'Inactive'}</p>
+            `;
+            
+            document.getElementById('userProfile').innerHTML = profileHTML;
+        } catch (error) {
+            console.error("Error loading profile:", error);
+            document.getElementById('userProfile').innerHTML = "<p>Error loading profile data</p>";
+        }
+    }
         
         async function registerUser() {
     if (!contract || !accounts[0]) {
@@ -366,7 +385,7 @@
     try {
         console.log("Отправка транзакции...");
         const tx = await contract.methods.registerUser(username, email, profileHash)
-            .send({ from: accounts[0], gas: 50000 });
+            .send({ from: accounts[0], gas: 300000, gasPrice: web3.utils.toWei('10', 'gwei') });
         
         console.log("Транзакция успешна:", tx.transactionHash);
         alert("Регистрация прошла успешно!");
@@ -376,8 +395,18 @@
         document.getElementById('profileSection').style.display = 'block';
         loadUserProfile(accounts[0]);
     } catch (error) {
-        console.error("Ошибка регистрации:", error);
-        alert("Ошибка: " + error.message);
+        let errorMessage = "Ошибка регистрации";
+    
+    if (error.data) {
+        // Пытаемся извлечь revert reason если есть
+        const revertReason = web3.utils.hexToAscii(error.data.slice(10));
+        errorMessage += ": " + revertReason;
+    } else if (error.message.includes("revert")) {
+        errorMessage += " (транзакция была отменена)";
+    }
+    
+    alert(errorMessage);
+    console.error("Full error:", error);
     }
 }
         
@@ -403,8 +432,13 @@
 				alert("Contract not loaded. Connect MetaMask first!");
 				return;
 			}
-            const address = document.getElementById('lookupAddress').value;
+            const address = document.getElementById('lookupAddress').value.trim();
             
+			if (!address) {
+					alert("Please enter an Ethereum address");
+					return;
+				}
+
             try {
                 const isRegistered = await contract.methods.isUserRegistered(address).call();
                 if (!isRegistered) {
